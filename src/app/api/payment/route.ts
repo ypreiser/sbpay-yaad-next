@@ -126,8 +126,10 @@ export async function POST(request: NextRequest) {
     const finalPaymentUrl = `${YAAD_BASE_URL}/p/?action=pay&${signature}`;
     console.log({ finalPaymentUrl });
 
-    // Return the response SBPay expects with the final URL
-    NextResponse.json(
+    if (process.env.NODE_ENV === "production") {
+      return NextResponse.redirect(finalPaymentUrl);
+    }
+    return NextResponse.json(
       {
         status: "success",
         payment_url: finalPaymentUrl,
@@ -140,9 +142,6 @@ export async function POST(request: NextRequest) {
         },
       }
     );
-
-    return NextResponse.redirect(finalPaymentUrl);
-
   } catch (error) {
     console.error("Payment request processing failed:", error);
 
