@@ -63,10 +63,23 @@ function validateSBPaySignature(
   }
 }
 
-const YAAD_BASE_URL =
-  process.env.NODE_ENV === "production"
-    ? "https://icom.yaad.net"
-    : "https://test.yaad.net";
+const YAAD_BASE_URL = "https://icom.yaad.net";
+
+// Use test or production credentials based on environment
+const YAAD_CREDS = {
+  Masof:
+    process.env.NODE_ENV === "production"
+      ? process.env.YAAD_MASOF!
+      : process.env.TEST_Masof!,
+  PassP:
+    process.env.NODE_ENV === "production"
+      ? process.env.YAAD_PassP!
+      : process.env.TEST_PassP!,
+  KEY:
+    process.env.NODE_ENV === "production"
+      ? process.env.YAAD_KEY!
+      : process.env.TEST_KEY!,
+};
 
 export async function POST(request: NextRequest) {
   try {
@@ -89,18 +102,48 @@ export async function POST(request: NextRequest) {
     // Parse and validate the request body
     const paymentData = sbPayRequestSchema.parse(rawBody);
 
-    // Return the response SBPay expects
+    // First get signature from Yaad
+    const signatureUrl = `${YAAD_BASE_URL}/p/${new URLSearchParams({
+      action: "APISign",
+      What: "SIGN",
+      KEY: YAAD_CREDS.KEY,
+      PassP: YAAD_CREDS.PassP,
+      Masof: YAAD_CREDS.Masof,
+      Order: paymentData.Order,
+      Amount: paymentData.Amount.toString(),
+      ClientName: paymentData.ClientName,
+      Currency: "1", // 1 for ILS
+      tmp: "1",
+    })}`;
+
+    // Get signature from Yaad
+    const signResponse = await fetch(signatureUrl);
+    console.log(signResponse);
+    const signature = await signResponse.text();
+
+    // Now create the final payment URL with the signature
+    const finalPaymentUrl = `${YAAD_BASE_URL}/p/${new URLSearchParams(
+      {
+        action: "pay",
+        Masof: YAAD_CREDS.Masof,
+        PassP: YAAD_CREDS.PassP,
+        Key: YAAD_CREDS.KEY,
+        Order: paymentData.Order,
+        Amount: paymentData.Amount.toString(),
+        ClientName: paymentData.ClientName,
+        Currency: "1", // 1 for ILS
+        sign: signature,
+        Info: "Test Payment",
+        UTF8: "True",
+        tmp: "1",
+      }
+    )}`;
+
+    // Return the response SBPay expects with the final URL
     return NextResponse.json(
       {
         status: "success",
-        payment_url: `${YAAD_BASE_URL}/p/?action=pay&${new URLSearchParams({
-          Order: paymentData.Order,
-          Amount: paymentData.Amount.toString(),
-          Currency: paymentData.Currency,
-          KEY: process.env.YAAD_KEY!,
-          Masof: process.env.YAAD_MASOF!,
-          PassP: process.env.YAAD_PassP!,
-        })}`,
+        payment_url: finalPaymentUrl,
         transaction_id: paymentData.Order,
       },
       {
