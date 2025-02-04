@@ -126,22 +126,21 @@ export async function POST(request: NextRequest) {
     const finalPaymentUrl = `${YAAD_BASE_URL}/p/?action=pay&${signature}`;
     console.log({ finalPaymentUrl });
 
+    // Return based on environment
     if (process.env.NODE_ENV === "production") {
       return NextResponse.redirect(finalPaymentUrl);
     }
-    return NextResponse.json(
-      {
-        status: "success",
-        payment_url: finalPaymentUrl,
-        transaction_id: paymentData.Order,
+
+    return NextResponse.json({
+      status: "success",
+      payment_url: finalPaymentUrl,
+      transaction_id: paymentData.Order,
+      debug: {
+        signatureUrl,
+        signature,
+        finalPaymentUrl,
       },
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    });
   } catch (error) {
     console.error("Payment request processing failed:", error);
 
