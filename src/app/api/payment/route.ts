@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
     const paymentData = sbPayRequestSchema.parse(rawBody);
 
     // First get signature from Yaad
-    const signatureUrl = `${YAAD_BASE_URL}/p/${new URLSearchParams({
+    const signatureUrl = `${YAAD_BASE_URL}/p/?${new URLSearchParams({
       action: "APISign",
       What: "SIGN",
       KEY: YAAD_CREDS.KEY,
@@ -115,32 +115,19 @@ export async function POST(request: NextRequest) {
       Currency: "1", // 1 for ILS
       tmp: "1",
     })}`;
+    console.log({ signatureUrl });
 
     // Get signature from Yaad
     const signResponse = await fetch(signatureUrl);
-    console.log(signResponse);
+    console.log({ signResponse });
     const signature = await signResponse.text();
 
     // Now create the final payment URL with the signature
-    const finalPaymentUrl = `${YAAD_BASE_URL}/p/${new URLSearchParams(
-      {
-        action: "pay",
-        Masof: YAAD_CREDS.Masof,
-        PassP: YAAD_CREDS.PassP,
-        Key: YAAD_CREDS.KEY,
-        Order: paymentData.Order,
-        Amount: paymentData.Amount.toString(),
-        ClientName: paymentData.ClientName,
-        Currency: "1", // 1 for ILS
-        sign: signature,
-        Info: "Test Payment",
-        UTF8: "True",
-        tmp: "1",
-      }
-    )}`;
+    const finalPaymentUrl = `${YAAD_BASE_URL}/p/?action=pay&${signature}`;
+    console.log({ finalPaymentUrl });
 
     // Return the response SBPay expects with the final URL
-    return NextResponse.json(
+    NextResponse.json(
       {
         status: "success",
         payment_url: finalPaymentUrl,
@@ -153,6 +140,9 @@ export async function POST(request: NextRequest) {
         },
       }
     );
+
+    return NextResponse.redirect(finalPaymentUrl);
+
   } catch (error) {
     console.error("Payment request processing failed:", error);
 
