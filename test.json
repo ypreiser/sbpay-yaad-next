@@ -1,0 +1,39 @@
+{
+    "info": {
+      "name": "YaadPay Integration Tests",
+      "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+      {
+        "name": "Initial Payment",
+        "request": {
+          "method": "POST",
+          "url": "http://localhost:3000/api/test/payment",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"order_id\": \"TEST123\",\n  \"amount\": \"100.00\",\n  \"customer_name\": \"John Doe\"\n}"
+          }
+        }
+      },
+      {
+        "name": "Success Callback",
+        "request": {
+          "method": "POST",
+          "url": "http://localhost:3000/api/test/callback?success=true&order=TEST123&amount=100.00"
+        }
+      },
+      {
+        "name": "Failure Callback",
+        "request": {
+          "method": "POST",
+          "url": "http://localhost:3000/api/test/callback?success=false&order=TEST123&amount=100.00"
+        }
+      }
+    ]
+  }
