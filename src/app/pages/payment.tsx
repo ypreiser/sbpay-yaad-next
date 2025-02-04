@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
 
 interface PaymentData {
   Order: string;
@@ -15,8 +14,14 @@ export default function PaymentPage() {
   useEffect(() => {
     const fetchPaymentData = async () => {
       try {
-        const response = await axios.post<PaymentData>("/api/payment", {});
-        setPaymentData(response.data);
+        const response = await fetch("/api/payment", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+        const data = await response.json();
+        setPaymentData(data);
       } catch (err) {
         console.error("Error fetching payment data:", err);
         setError("Failed to retrieve payment details. Please try again later.");
@@ -34,25 +39,24 @@ export default function PaymentPage() {
 
       setIsLoading(true);
       try {
-        const { Order, Amount, ClientName } = paymentData;
-        const signResponse = await axios.post<string>("/api/signature", {
-          Order,
-          Amount,
-          ClientName,
+        const response = await fetch("/api/signature", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            Order: paymentData.Order,
+            Amount: paymentData.Amount,
+            ClientName: paymentData.ClientName,
+          }),
         });
 
-        const reqWithSignature = signResponse.data;
-        console.log(reqWithSignature);
-        
+        const reqWithSignature = await response.json();
         if (!reqWithSignature) {
           throw new Error("Invalid reqWithSignature received from server");
         }
 
-        // Use window.location.replace for a cleaner redirect
-        // window.location.replace(
-        console.log(
-          `https://icom.yaad.net/p/?action=pay&${reqWithSignature}`
-        );
+        console.log(`https://icom.yaad.net/p/?action=pay&${reqWithSignature}`);
       } catch (err) {
         console.error("Payment redirect failed:", err);
         setError("Payment initialization failed. Please try again later.");

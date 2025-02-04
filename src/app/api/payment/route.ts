@@ -10,13 +10,14 @@ const requiredEnvVars = [
   "YAAD_PassP",
   "YAAD_MASOF",
 ] as const;
+
 for (const envVar of requiredEnvVars) {
   if (!process.env[envVar]) {
     throw new Error(`Missing required environment variable: ${envVar}`);
   }
 }
 
-// SBPay request schema matching their actual API
+// SBPay request schema
 const sbPayRequestSchema = z
   .object({
     transaction_id: z.string(),
@@ -30,23 +31,23 @@ const sbPayRequestSchema = z
     metadata: z.record(z.unknown()).optional(),
     success_url: z.string().url().optional(),
     cancel_url: z.string().url().optional(),
-    signature: z.string(), // SBPay's request signature
+    signature: z.string(),
   })
   .transform((data) => ({
     Order: data.transaction_id,
     Amount: data.amount,
     ClientName: data.customer.name,
     Currency: data.currency,
-    Email: data.customer.email,
-    Phone: data.customer.phone,
-    SuccessURL: data.success_url,
-    CancelURL: data.cancel_url,
   }));
 
-function validateSBPaySignature(payload: unknown, signature: string): boolean {
+function validateSBPaySignature(
+  payload: Record<string, unknown>,
+  signature: string
+): boolean {
   try {
-    // Recreate signature using your secret
-    const dataToSign = JSON.stringify(payload);
+    // eslint-disable-next-line
+    const { signature: _, ...payloadWithoutSignature } = payload;
+    const dataToSign = JSON.stringify(payloadWithoutSignature);
     const expectedSignature = crypto
       .createHmac("sha256", process.env.SBPAY_SECRET!)
       .update(dataToSign)
@@ -61,6 +62,11 @@ function validateSBPaySignature(payload: unknown, signature: string): boolean {
     return false;
   }
 }
+
+const YAAD_BASE_URL =
+  process.env.NODE_ENV === "production"
+    ? "https://icom.yaad.net"
+    : "https://test.yaad.net";
 
 export async function POST(request: NextRequest) {
   try {
@@ -83,21 +89,18 @@ export async function POST(request: NextRequest) {
     // Parse and validate the request body
     const paymentData = sbPayRequestSchema.parse(rawBody);
 
-    // Store transaction details in your database here
-    // await db.transactions.create({ ... })
-
     // Return the response SBPay expects
     return NextResponse.json(
       {
         status: "success",
-        payment_url: `https://icom.yaad.net/p/?action=pay&${new URLSearchParams(
-          {
-            Order: paymentData.Order,
-            Amount: paymentData.Amount.toString(),
-            Currency: paymentData.Currency,
-            // Add other required Yaad parameters
-          }
-        )}`,
+        payment_url: `${YAAD_BASE_URL}/p/?action=pay&${new URLSearchParams({
+          Order: paymentData.Order,
+          Amount: paymentData.Amount.toString(),
+          Currency: paymentData.Currency,
+          KEY: process.env.YAAD_KEY!,
+          Masof: process.env.YAAD_MASOF!,
+          PassP: process.env.YAAD_PassP!,
+        })}`,
         transaction_id: paymentData.Order,
       },
       {
