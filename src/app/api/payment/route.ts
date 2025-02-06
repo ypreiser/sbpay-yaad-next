@@ -10,13 +10,14 @@ const requiredEnvVars = [
   "YAAD_PassP",
   "YAAD_MASOF",
 ] as const;
+
 for (const envVar of requiredEnvVars) {
   if (!process.env[envVar]) {
     throw new Error(`Missing required environment variable: ${envVar}`);
   }
 }
 
-// SBPay request schema matching their actual API
+// SBPay request schema
 const sbPayRequestSchema = z
   .object({
     transaction_id: z.string(),
@@ -30,23 +31,23 @@ const sbPayRequestSchema = z
     metadata: z.record(z.unknown()).optional(),
     success_url: z.string().url().optional(),
     cancel_url: z.string().url().optional(),
-    signature: z.string(), // SBPay's request signature
+    signature: z.string(),
   })
   .transform((data) => ({
     Order: data.transaction_id,
     Amount: data.amount,
     ClientName: data.customer.name,
     Currency: data.currency,
-    Email: data.customer.email,
-    Phone: data.customer.phone,
-    SuccessURL: data.success_url,
-    CancelURL: data.cancel_url,
   }));
 
-function validateSBPaySignature(payload: unknown, signature: string): boolean {
+function validateSBPaySignature(
+  payload: Record<string, unknown>,
+  signature: string
+): boolean {
   try {
-    // Recreate signature using your secret
-    const dataToSign = JSON.stringify(payload);
+    // eslint-disable-next-line
+    const { signature: _, ...payloadWithoutSignature } = payload;
+    const dataToSign = JSON.stringify(payloadWithoutSignature);
     const expectedSignature = crypto
       .createHmac("sha256", process.env.SBPAY_SECRET!)
       .update(dataToSign)
@@ -61,6 +62,24 @@ function validateSBPaySignature(payload: unknown, signature: string): boolean {
     return false;
   }
 }
+
+const YAAD_BASE_URL = "https://icom.yaad.net";
+
+// Use test or production credentials based on environment
+const YAAD_CREDS = {
+  Masof:
+    process.env.NODE_ENV === "production"
+      ? process.env.YAAD_MASOF!
+      : process.env.TEST_Masof!,
+  PassP:
+    process.env.NODE_ENV === "production"
+      ? process.env.YAAD_PassP!
+      : process.env.TEST_PassP!,
+  KEY:
+    process.env.NODE_ENV === "production"
+      ? process.env.YAAD_KEY!
+      : process.env.TEST_KEY!,
+};
 
 export async function POST(request: NextRequest) {
   try {
@@ -83,30 +102,45 @@ export async function POST(request: NextRequest) {
     // Parse and validate the request body
     const paymentData = sbPayRequestSchema.parse(rawBody);
 
-    // Store transaction details in your database here
-    // await db.transactions.create({ ... })
+    // First get signature from Yaad
+    const signatureUrl = `${YAAD_BASE_URL}/p/?${new URLSearchParams({
+      action: "APISign",
+      What: "SIGN",
+      KEY: YAAD_CREDS.KEY,
+      PassP: YAAD_CREDS.PassP,
+      Masof: YAAD_CREDS.Masof,
+      Order: paymentData.Order,
+      Amount: paymentData.Amount.toString(),
+      ClientName: paymentData.ClientName,
+      Currency: "1", // 1 for ILS
+      tmp: "1",
+    })}`;
+    console.log({ signatureUrl });
 
-    // Return the response SBPay expects
-    return NextResponse.json(
-      {
-        status: "success",
-        payment_url: `https://icom.yaad.net/p/?action=pay&${new URLSearchParams(
-          {
-            Order: paymentData.Order,
-            Amount: paymentData.Amount.toString(),
-            Currency: paymentData.Currency,
-            // Add other required Yaad parameters
-          }
-        )}`,
-        transaction_id: paymentData.Order,
+    // Get signature from Yaad
+    const signResponse = await fetch(signatureUrl);
+    console.log({ signResponse });
+    const signature = await signResponse.text();
+
+    // Now create the final payment URL with the signature
+    const finalPaymentUrl = `${YAAD_BASE_URL}/p/?action=pay&${signature}`;
+    console.log({ finalPaymentUrl });
+
+    // Return based on environment
+    if (process.env.NODE_ENV === "production") {
+      return NextResponse.redirect(finalPaymentUrl);
+    }
+
+    return NextResponse.json({
+      status: "success",
+      payment_url: finalPaymentUrl,
+      transaction_id: paymentData.Order,
+      debug: {
+        signatureUrl,
+        signature,
+        finalPaymentUrl,
       },
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    });
   } catch (error) {
     console.error("Payment request processing failed:", error);
 
